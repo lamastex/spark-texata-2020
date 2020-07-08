@@ -3,24 +3,31 @@ package com.aamend.texata
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions._
 
-class Brent extends App {
+import org.scalatest.Matchers
 
-  val spark = SparkSession.builder().appName("gdelt-harness").getOrCreate()
-  val sqlContext = spark.sqlContext
 
+import scala.io.Source
+
+class BrentTest extends SparkSpec with Matchers {
+sparkTest("Brent texata") { spark =>
+  //val spark = SparkSession.builder().appName("gdelt-harness").getOrCreate()
+  //val sqlContext = spark.sqlContext
+  import org.apache.spark.sql.SparkSession
+  import org.apache.spark.sql.functions._
   import spark.implicits._
+
+  import com.aamend.texata.timeseries.DateUtils.Frequency
+  import com.aamend.texata.timeseries.SeriesUtils.FillingStrategy
+  import com.aamend.texata.timeseries._
 
   val dateUDF = udf((s: String) => new java.sql.Date(new java.text.SimpleDateFormat("yyyy-MM-dd").parse(s).getTime))
   val valueUDF = udf((s: String) => s.toDouble)
 
   // Only keep brent with data we know could match ours
-  val DF = spark.read.option("header", "true").option("inferSchema", "true").csv("brent.csv").filter(year(col("DATE")) >= 2015)
+  val filePathRoot: String = "file:///root/GIT/lamastex/spark-texata-2020/src/test/resources/com/aamend/texata/gdelt/"
+  val DF = spark.read.option("header", "true").option("inferSchema", "true").csv(filePathRoot+"brent.csv").filter(year(col("DATE")) >= 2015)
   DF.show
   DF.createOrReplaceTempView("brent")
-
-  import com.aamend.texata.timeseries.DateUtils.Frequency
-  import com.aamend.texata.timeseries.SeriesUtils.FillingStrategy
-  import com.aamend.texata.timeseries._
 
   val trendDF = DF.rdd.map(r => ("DUMMY", Point(r.getAs[java.sql.Date]("DATE").getTime, r.getAs[Double]("VALUE")))).groupByKey().mapValues(it => {
     val series = it.toArray.sortBy(_.x)
@@ -62,6 +69,6 @@ class Brent extends App {
     .withColumn("TREND", trendUDF(col("trend")))
     .select("DATE", "VALUE", "TREND")
     .createOrReplaceTempView("trends")
-
+  }
 }
 

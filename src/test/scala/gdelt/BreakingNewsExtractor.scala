@@ -9,21 +9,36 @@ import com.aamend.texata.timeseries.{DateUtils, Point, SeriesUtils}
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions.{window, _}
 
-class BreakingNewsExtractor extends App {
+import org.scalatest.Matchers
 
-  val spark = SparkSession.builder().appName("gdelt-harness").getOrCreate()
+import scala.io.Source
+
+class BreakingNewsExtractorTest extends SparkSpec with Matchers {
+  sparkTest("BreakingNewsExtractor test") { spark =>
+  //val spark = SparkSession.builder().appName("gdelt-harness").getOrCreate()
   val sqlContext = spark.sqlContext
 
   import spark.implicits._
 
   // Mock up zeppelin
-  val z = Map.empty[String, String]
+  //val z = Map.empty[String, String]
 
-  val inputGkg = "s3://texata-round2/gdelt/gkg"
-  val inputEvent = "s3://texata-round2/gdelt/events"
+  val inputGkg = "/root/GIT/lamastex/spark-texata-2020/src/test/resources/com/aamend/texata/gdelt/gdelt-gkg.csv"
+  val inputEvent = "/root/GIT/lamastex/spark-texata-2020/src/test/resources/com/aamend/texata/gdelt/gdelt-event.csv"
 
-  val eventDS = spark.read.gdeltEVENT(inputEvent)
-  val gkgDS = spark.read.gdeltGKG(inputGkg)
+  val eventDS = spark.read.option("encoding", "UTF-8").gdeltEVENT(inputEvent)
+  val gkgDS = spark.read.option("encoding", "UTF-8").gdeltGKG(inputGkg)
+
+    def movingAverage(timeseries: Array[Point], grouping: Frequency.Value): Array[Point] = {
+    timeseries.groupBy(p => DateUtils.roundTime(grouping, p.x)).flatMap({ case (group, groupedSeries) =>
+      val avg = groupedSeries.map(_.y).sum / groupedSeries.length
+      groupedSeries.map(p => {
+        Point(p.x, avg)
+      })
+    }).toArray.sortBy(_.x)
+  }
+
+  
 
   // I extract all Event that are about OIL and GAS (thx to the GKG theme)
 
@@ -32,6 +47,9 @@ class BreakingNewsExtractor extends App {
   }).flatMap(c => {
     c.eventIds.map(_ -> "DUMMY")
   }).toDF("eventId", "_dummy")
+
+var oilEventDF = eventDS.toDF().join(oilGKGDF, "eventId")
+
   val oilEventSeries = oilEventDF.groupBy(
     col("actionGeo.countryCode"),
     col("date")
@@ -53,9 +71,10 @@ class BreakingNewsExtractor extends App {
         (country, new Date(p.x), p.y))
     }).toDF("country", "date", "articles").cache()
 
-  // Checkpoint here
-  oilEventDF.write.parquet("oil_events")
-  oilEventDF = spark.read.parquet("oil_events")
+// Checkpoint here
+  //oilEventDF.write.parquet("oil_events")
+  //oilEventDF = spark.read.parquet("oil_events")
+  
 
   // Let's get some graph
   val mve = oilEventSeries.filter(!col("articles").isNaN)
@@ -64,19 +83,23 @@ class BreakingNewsExtractor extends App {
     .orderBy(desc("articles"))
     .select(col("window.start").as("date"), col("country"), col("articles"))
     .limit(10000)
+    
 
-  val df = spark.read.parquet("oil_events").withColumnRenamed("date", "_date")
+  val df = oilEventDF.withColumnRenamed("date", "_date")
 
 
   oilEventSeries.createOrReplaceTempView("oil_gas")
   sqlContext.cacheTable("oil_gas")
+  df.show()
 
   //TODO: See screenshot FR_UK_OIL-events
-
+/*
   // I extract the top events in the OIL and GAS
+  //FROM HERE ERROR COMES
   val mveEvents = mve.join(df, df("_date") === mve("date") && df("actionGeo.countryCode").as("_country") === mve("country")).cache()
-
+/*
   mve.show()
+
 
   /*
 +-------------------+-------+------------------+
@@ -110,22 +133,18 @@ class BreakingNewsExtractor extends App {
     (r.getAs[String]("country"), r.getAs[Date]("date"), r.getAs[Double]("articles"))
   })
   val urlRDD = mveEvents.select("sourceUrl").distinct().rdd.map(_.getAs[String]("sourceUrl"))
-  val articleDF = urlRDD.distinct.mapPartitions(fetcher).toDF("_URL", "title", "description", "text", "tags")
-  val mveEnrichedDF = mveEvents.join(articleDF, col("_URL") === col("sourceURL")).orderBy(col("date")).select("date", "country", "goldsteinScale", "sourceUrl", "title", "description", "tags")
+  //val articleDF = urlRDD.distinct.mapPartitions(fetcher).toDF("_URL", "title", "description", "text", "tags")
+  //val mveEnrichedDF = mveEvents.join(articleDF, col("_URL") === col("sourceURL")).orderBy(col("date")).select("date", "country", "goldsteinScale", "sourceUrl", "title", "description", "tags")
 
-  import com.gravity.goose.{Configuration, Goose}
+  //import com.gravity.goose.{Configuration, Goose}
+*/
+  
 
-  var oilEventDF = eventDS.toDF().join(oilGKGDF, "eventId")
 
-  def movingAverage(timeseries: Array[Point], grouping: Frequency.Value): Array[Point] = {
-    timeseries.groupBy(p => DateUtils.roundTime(grouping, p.x)).flatMap({ case (group, groupedSeries) =>
-      val avg = groupedSeries.map(_.y).sum / groupedSeries.length
-      groupedSeries.map(p => {
-        Point(p.x, avg)
-      })
-    }).toArray.sortBy(_.x)
-  }
 
+
+
+/*
   def fetcher(iterator: Iterator[String]): Iterator[(String, String, String, String, Array[_ <: String])] = {
     val conf: Configuration = new Configuration
     conf.setBrowserUserAgent("mozilla texata")
@@ -163,5 +182,7 @@ class BreakingNewsExtractor extends App {
   }).groupByKey().mapValues(_.toList.maxBy(v => math.abs(v._1))).map({ case (country, (goldstein, title, description, date)) =>
     (country, title, description, date)
   }).toDF("country", "title", "description", "date").show()
-
+*/
+*/
+}
 }

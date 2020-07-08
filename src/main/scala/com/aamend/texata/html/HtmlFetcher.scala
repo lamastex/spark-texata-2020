@@ -1,3 +1,4 @@
+/*
 package com.aamend.texata.html
 
 import com.gravity.goose.{Configuration, Goose}
@@ -33,3 +34,4 @@ class HtmlFetcher(connectionTimeOut: Int = 10000, socketTimeOut: Int = 10000) ex
     }
   }
 }
+*/
