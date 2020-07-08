@@ -1,4 +1,9 @@
-# Texata 2017 - Round 2
+# Texata 2020 
+
+This is a refactoring, refinement and extension of the gdelt examples done originally in https://github.com/aamend/texata-r2-2017 by using the following libraries:
+
+- https://github.com/aamend/spark-gdelt
+- and a library for trend-analysis under development
 
 ![HEADER](/images/header.png)
 
